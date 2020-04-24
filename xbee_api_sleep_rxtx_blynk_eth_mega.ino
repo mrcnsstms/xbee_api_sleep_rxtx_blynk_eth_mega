@@ -7,11 +7,10 @@
 #include <DallasTemperature.h>
 #include <SPI.h>
 #include <Ethernet.h>
-#include <SoftwareSerial.h>
 #include <Print_lib.h>
 
-SoftwareSerial ss(7,8);  // (rx,tx)
-#define BLYNK_PRINT Serial // must be before Blynk include
+Print_lib m_hw(&Serial);
+#define BLYNK_Print Serial // must be before Blynk include
 #include <BlynkSimpleEthernet.h>
 
 char auth[] = "ed2b10f6ec7a46b1aef3c363778c5973";
@@ -22,10 +21,9 @@ char auth[] = "ed2b10f6ec7a46b1aef3c363778c5973";
 #define WAKE_PIN    3
 #define DS180_TEMP  4
 
-Xbee_lib m_xbee(&ss);
-Print_lib m_printer(&ss);
+Xbee_lib m_xbee(&m_hw);
 
-millisDelay m_wireless_timer;
+millisDelay m_wirelem_hw_timer;
 millisDelay m_remote_status_timer;
 
 uint8_t m_usb_state = 0;
@@ -50,13 +48,12 @@ void setup()
   delay(2000);
 
   Serial.begin(19200);
-  Serial.println("**** SERIAL ****");
+  Serial1.begin(19200);
+  m_xbee.Begin(19200);
 
-  m_printer.Print();
-
-  ss.begin(19200);   //m_xbee.Begin(19200);
-  ss.print("xbee_api_sleep_txrx_usb_coordinator : ");
-  ss.println(version);
+  m_hw.Begin(19200);   //m_xbee.Begin(19200);
+  m_hw.Print("xbee_api_sleep_txrx_usb_coordinator : ");
+  m_hw.Println(version);
 
   // pin definitions
   pinMode(LED_PIN, OUTPUT);
@@ -64,8 +61,8 @@ void setup()
   pinMode(SDCARD_CS, OUTPUT);
   digitalWrite(SDCARD_CS, HIGH); // Deselect the SD card
 
-  // delay for handling wireless interface
-  m_wireless_timer.start(1);
+  // delay for handling wirelem_hw interface
+  m_wirelem_hw_timer.start(1);
 
   // delay for reporting status
   m_remote_status_timer.start(14000);
@@ -87,9 +84,9 @@ void loop()
   //Run blynk
   Blynk.run();
 
-  if(m_wireless_timer.justFinished())
+  if(m_wirelem_hw_timer.justFinished())
   {
-    m_wireless_timer.repeat();
+    m_wirelem_hw_timer.repeat();
     handle_wireless();
   }
 
@@ -100,11 +97,24 @@ void loop()
   }
 }
 
+//////////////////////////////////////////////////////////////////////
+
+void Transmit_frame(const uint8_t* frame, const uint8_t length)
+{
+  // doesn't work properly, tx's huge frame
+  //m_hw.Print_array("TX frame: ", frame, length);
+  m_hw.Print_array(frame, length);
+  delay(10);
+  Serial1.write(frame, length);
+  delay(10);
+}
+
+
 ////////////////////////////////////////
 //Write data to blynk
 void Post_blynk_data(const struct Msg_data blynk_data)
 {
-  ss.println("Posting to Blynk");
+  m_hw.Println("Posting to Blynk");
 
   WidgetMap myMap1(V13);
   int index1 = 1;
@@ -190,18 +200,18 @@ BLYNK_WRITE(V14)
  {
    //row in table was selected.
    int rowId = param[1].asInt();
-   ss.print("Row ID: ");
-   ss.print(rowId);
-   ss.println(" selected");
+   m_hw.Print("Row ID: ");
+   m_hw.Print(rowId);
+   m_hw.Println(" selected");
  }
 
  if (cmd == "deselect")
  {
    //row in table was selected.
    int rowId = param[1].asInt();
-   ss.print("Row ID: ");
-   ss.print(rowId);
-   ss.println(" de-selected");
+   m_hw.Print("Row ID: ");
+   m_hw.Print(rowId);
+   m_hw.Println(" de-selected");
  }
  if (cmd == "order")
  {
@@ -231,12 +241,12 @@ uint8_t Convert_payload(uint8_t payload_id[], uint8_t length)
 //Get Value from blynk V10
 BLYNK_WRITE(XBEE2_DIG_6)
 {
-  ss.println("Blynk command RX'd");
+  m_hw.Println("Blynk command RX'd");
   m_rx_blynk_msg.address = 3;
   m_rx_blynk_msg.payload_id = CMD_ID::IO_OUT;
   m_rx_blynk_msg.payload_len = 3;
   m_rx_blynk_msg.payload[0] = 6; // pin 6
-  int pinValue = param.asInt(); // assigning incoming value from pin V1 to a variable
+  int pinValue = param.asInt(); // am_hwigning incoming value from pin V1 to a variable
 
   if(pinValue)
   {
@@ -255,12 +265,12 @@ BLYNK_WRITE(XBEE2_DIG_6)
 
 BLYNK_WRITE(V5)
 {
-  ss.println("Blynk command RX'd");
+  m_hw.Println("Blynk command RX'd");
   m_rx_blynk_msg.address = 3;
   m_rx_blynk_msg.payload_id = 'o';
   m_rx_blynk_msg.payload_len = 3;
   m_rx_blynk_msg.payload[0] = 6; // pin 6
-  int pinValue = param.asInt(); // assigning incoming value from pin V1 to a variable
+  int pinValue = param.asInt(); // am_hwigning incoming value from pin V1 to a variable
 
   if(pinValue)
   {
@@ -280,22 +290,22 @@ BLYNK_WRITE(V5)
 
 void handle_remote_status()
 {
-  ss.println("Handle remote status");
+  m_hw.Println("Handle remote status");
   for(int i = 0; i < 5; i++)
   {
     if(m_rx_msg[i].valid)
     {
-      ss.print("Remote Address: ");
-      ss.println(m_rx_msg[i].address);
-      ss.print("Light[%]: ");
+      m_hw.Print("Remote address: ");
+      m_hw.Println(m_rx_msg[i].address);
+      m_hw.Print("Light[%]: ");
       uint8_t light = map(m_rx_msg[i].payload[0], 0, 255, 0, 100);
-      ss.println(light);
-      ss.print("Temperature[F]: ");
-      ss.println(m_rx_msg[i].payload[1]);
-      ss.print("Battery[V]: ");
+      m_hw.Println(light);
+      m_hw.Print("Temperature[F]: ");
+      m_hw.Println(m_rx_msg[i].payload[1]);
+      m_hw.Print("Battery[V]: ");
       float battery = m_rx_msg[i].payload[2] * 8 * 0.003157; // 0.0032258 @ 3.3V
-      ss.println(battery);
-      ss.println();
+      m_hw.Println(battery);
+      m_hw.Println();
       Post_blynk_data(m_rx_msg[i]);
     }
   }
@@ -308,8 +318,8 @@ float mapf(float x, float in_min, float in_max, float out_min, float out_max)
 
 void update_tx_msg(const struct Msg_data blynk_data)
 {
-  ss.println("Updating TX msg");
-  m_xbee.Print_msg(blynk_data, false);
+  m_hw.Println("Updating TX msg");
+  m_hw.Print_msg(blynk_data, false);
   m_tx_msg[blynk_data.address] = blynk_data;
 }
 
@@ -317,9 +327,9 @@ void update_tx_msg(const struct Msg_data blynk_data)
 
 void handle_wireless()
 {
-  while(Serial.available())
+  while(Serial1.available())
   {
-    m_xbee.Process_byte(Serial.read());
+    m_xbee.Process_byte(Serial1.read());
   }
 }
 
@@ -327,23 +337,23 @@ void handle_wireless()
 
 void Message_received(const struct Msg_data rx_data)
 {
-  ss.println("Message_received");
-  m_xbee.Print_msg(rx_data);
+//  m_hw.Println("Mem_hwage_received");
+//  m_hw.Print_msg(rx_data, false);
 
   switch(rx_data.payload_id)
   {
     case CMD_ID::NO_ACK :
-      ss.println("Rx'd No Ack");
+      m_hw.Println("Rx'd No Ack");
       // do nothing, no response
       break;
 
     case CMD_ID::ACK :
-      ss.println("Rx'd Ack");
+      m_hw.Println("Rx'd Ack");
       // build response
       break;
 
     case CMD_ID::IO_IN :
-      ss.println("Rx'd IO in");
+      m_hw.Println("Rx'd IO in");
 
       // update rx data container
       for(int i = 0; i < sizeof(rx_data.payload); i++)
@@ -355,12 +365,12 @@ void Message_received(const struct Msg_data rx_data)
       break;
 
     default :
-      ss.print("Unknown CMD::ID: ");
-      ss.println(rx_data.payload_id);
+      m_hw.Print("Unknown CMD::ID: ");
+      m_hw.Println(rx_data.payload_id);
   }
 
 
-  // build message, insert payloads
+  // build mem_hwage, insert payloads
   struct Msg_data tx_msg;
   tx_msg.length = 23;
   tx_msg.frame_type = 0x10;
@@ -374,10 +384,11 @@ void Message_received(const struct Msg_data rx_data)
   tx_msg.payload[1] = m_tx_msg[tx_msg.address].payload[1];
   tx_msg.payload[2] = m_tx_msg[tx_msg.address].payload[2];
 
-  // use enum from transmit status
-  uint8_t tx_ok = m_xbee.Transmit_data(tx_msg);
-  if(tx_ok == 1)
+  uint8_t tx_array[sizeof(tx_msg.payload) + 20];
+  bool tx_ok = m_xbee.Build_frame(tx_msg, tx_array);
+  if(tx_ok)
   {
+    Transmit_frame(tx_array, sizeof(tx_array));
     m_tx_count[rx_data.address]++;
   }
 
