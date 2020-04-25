@@ -40,7 +40,6 @@ void setup()
 
   // pin definitions
   pinMode(LED_PIN, OUTPUT);
-  pinMode(WAKE_PIN, INPUT);
   pinMode(SDCARD_CS, OUTPUT);
   digitalWrite(SDCARD_CS, HIGH); // Deselect SD card
   pinMode(W5100_CS, OUTPUT);
