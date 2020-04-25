@@ -3,40 +3,27 @@
 #include "version.h"
 #include "Xbee_lib.h"
 #include "Xbee_lib_defs.h"
-#include <OneWire.h>
-#include <DallasTemperature.h>
 #include <SPI.h>
 #include <Ethernet.h>
 #include <Print_lib.h>
 
-Print_lib m_hw(&Serial);
-#define BLYNK_Print Serial // must be before Blynk include
+#define BLYNK_PRINT Serial // must be before Blynk include
 #include <BlynkSimpleEthernet.h>
-
-char auth[] = "ed2b10f6ec7a46b1aef3c363778c5973";
 
 #define W5100_CS   10
 #define SDCARD_CS   4
 #define LED_PIN    13
-#define WAKE_PIN    3
-#define DS180_TEMP  4
 
+const char auth[] = "v1KVwnFGjFTRMiuZUeZyL9XAs7CGB43r";
+
+Print_lib m_hw(&Serial);
 Xbee_lib m_xbee(&m_hw);
 
-millisDelay m_wirelem_hw_timer;
 millisDelay m_remote_status_timer;
 
-uint8_t m_usb_state = 0;
-uint8_t m_usb_count = 0;
 struct Msg_data m_rx_blynk_msg;
-uint8_t m_tx_addr = 0;
-uint8_t j = 0;
-
 struct Msg_data m_tx_msg[5];
 struct Msg_data m_rx_msg[5];
-
-OneWire oneWire(DS180_TEMP);
-DallasTemperature sensor(&oneWire);
 
 uint8_t m_tx_count[6] = {}; // number of xbees in network
 
@@ -46,11 +33,7 @@ void setup()
 {
   // allow time to switch to xbee mode on pcb
   delay(2000);
-
-  Serial.begin(19200);
   Serial1.begin(19200);
-  m_xbee.Begin(19200);
-
   m_hw.Begin(19200);   //m_xbee.Begin(19200);
   m_hw.Print("xbee_api_sleep_txrx_usb_coordinator : ");
   m_hw.Println(version);
@@ -59,19 +42,15 @@ void setup()
   pinMode(LED_PIN, OUTPUT);
   pinMode(WAKE_PIN, INPUT);
   pinMode(SDCARD_CS, OUTPUT);
-  digitalWrite(SDCARD_CS, HIGH); // Deselect the SD card
-
-  // delay for handling wirelem_hw interface
-  m_wirelem_hw_timer.start(1);
+  digitalWrite(SDCARD_CS, HIGH); // Deselect SD card
+  pinMode(W5100_CS, OUTPUT);
+  digitalWrite(W5100_CS, HIGH);
 
   // delay for reporting status
   m_remote_status_timer.start(14000);
 
   // callback for when valid data received
   m_xbee.Set_callback(Message_received);
-
-  // Start up the library for dallas temp
-  sensor.begin();
 
   //setup blynk parameters
   Blynk.begin(auth);   // must be last call
@@ -84,11 +63,7 @@ void loop()
   //Run blynk
   Blynk.run();
 
-  if(m_wirelem_hw_timer.justFinished())
-  {
-    m_wirelem_hw_timer.repeat();
-    handle_wireless();
-  }
+  handle_wireless();
 
   if(m_remote_status_timer.justFinished())
   {
@@ -103,7 +78,7 @@ void Transmit_frame(const uint8_t* frame, const uint8_t length)
 {
   // doesn't work properly, tx's huge frame
   //m_hw.Print_array("TX frame: ", frame, length);
-  m_hw.Print_array(frame, length);
+  m_hw.Print_array(frame, length, HEX);
   delay(10);
   Serial1.write(frame, length);
   delay(10);
@@ -319,7 +294,7 @@ float mapf(float x, float in_min, float in_max, float out_min, float out_max)
 void update_tx_msg(const struct Msg_data blynk_data)
 {
   m_hw.Println("Updating TX msg");
-  m_hw.Print_msg(blynk_data, false);
+  m_hw.Print_msg(blynk_data);
   m_tx_msg[blynk_data.address] = blynk_data;
 }
 
@@ -372,7 +347,6 @@ void Message_received(const struct Msg_data rx_data)
 
   // build mem_hwage, insert payloads
   struct Msg_data tx_msg;
-  tx_msg.length = 23;
   tx_msg.frame_type = 0x10;
   tx_msg.address = rx_data.address;
   tx_msg.payload_len = m_tx_msg[tx_msg.address].payload_len;
@@ -399,18 +373,3 @@ void Message_received(const struct Msg_data rx_data)
   }
 }
 
-//////////////////////////////////////////////////////////////////////
-
-uint8_t getDallasTemp()
-{
-  delay(10);
-  sensor.requestTemperatures(); // Send the command to get temperatures
-  float tempF = (sensor.getTempCByIndex(0) * 9.0 / 5.0) + 32;
-
-  if(tempF < 0)
-  {
-    tempF = 0;
-  }
-
-  return tempF;
-}
